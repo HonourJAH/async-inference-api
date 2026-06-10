@@ -1,0 +1,46 @@
+services:
+
+  # Redis
+  redis:
+    image: redis:7-alpine
+    container_name: redis-service
+    ports:
+      - "6379:6379"
+    volumes:
+      - redis_data:/data
+    healthcheck:
+      test: ["CMD", "redis-cli", "ping"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+    restart: unless-stopped
+
+  # API Server
+  api:
+    build: .
+    container_name: async-inference-api
+    ports:
+      - "8000:8000"
+    environment:
+      - REDIS_URL=redis://redis:6379/0
+    depends_on:
+      redis:
+        condition: service_healthy
+    restart: unless-stopped
+
+  # Celery Worker
+  # Uses the same image as the API — just runs a different command
+  # Scale workers with: docker compose up
+  worker:
+    build: .
+    container_name: async-inference-worker
+    command: celery -A app.worker.celery_app worker --loglevel=info --concurrency=4
+    environment:
+      - REDIS_URL=redis://redis:6379/0
+    depends_on:
+      redis:
+        condition: service_healthy
+    restart: unless-stopped
+
+volumes:
+  redis_data:
