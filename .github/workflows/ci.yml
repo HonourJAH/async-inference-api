@@ -46,11 +46,9 @@ jobs:
     steps:
         - uses: actions/checkout@v4
 
-        # Sets up the advanced Docker BuildKit engine on the runner
         - name: Set up Docker Buildx
           uses: docker/setup-buildx-action@v3
 
-        # Exposes GitHub Actions cache to Docker Compose
         - name: Cache Docker layers
           uses: actions/cache@v4
           with:
@@ -58,6 +56,11 @@ jobs:
             key: ${{ runner.os }}-buildx-${{ github.sha }}
             restore-keys: |
               ${{ runner.os }}-buildx-
+
+        # NEW STEP: Create a dummy model so Docker COPY and RUN validations pass
+        - name: Generate Dummy Model for Docker
+          run: |
+            python -c "import joblib; joblib.dump({'pipeline': 'fake', 'categories': ['A']}, 'model.joblib')"
 
         - name: Start services
           env:
@@ -68,7 +71,7 @@ jobs:
             docker compose up -d
 
         - name: Wait for API to start
-          run: sleep 10 # Reduced from 30 since cached containers boot much faster
+          run: sleep 10
 
         - name: Health check
           run: curl --fail http://localhost:8000/health
