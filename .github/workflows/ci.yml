@@ -9,8 +9,7 @@ on:
       - main
 
 jobs:
-
-  # Job 1: Run Tests
+  # Job 1: Run Tests (Optimized to run only once)
   test:
     runs-on: ubuntu-latest
 
@@ -22,8 +21,6 @@ jobs:
         with:
           python-version: "3.12"
 
-      # Cache pip dependencies so they don't reinstall on every run
-      # Cache key changes only when requirements.txt changes
       - name: Cache pip dependencies
         uses: actions/cache@v4
         with:
@@ -35,17 +32,13 @@ jobs:
       - name: Install dependencies
         run: |
           pip install --upgrade pip
-          pip install -r requirements.txt
+          pip install -r requirements.txt pytest-cov
 
-      # Tests use fakeredis so no real Redis instance is needed here
-      - name: Run tests
-        run: pytest app/test/ -v --tb=short
+      # Combined run and coverage reporting into a single command
+      - name: Run test suite with coverage
+        run: pytest app/test/ -v --cov=app --cov-report=term-missing --tb=short
 
-      - name: Show test coverage
-        run: pytest app/test/ --cov=app --cov-report=term-missing --tb=short
-
-
-  # Job 2: Build & Verify Docker Image
+  # Job 2: Build & Verify Docker Image (With Buildx Layer Caching)
   docker-build:
     runs-on: ubuntu-latest
     needs: test
@@ -53,11 +46,29 @@ jobs:
     steps:
         - uses: actions/checkout@v4
 
+        # Sets up the advanced Docker BuildKit engine on the runner
+        - name: Set up Docker Buildx
+          uses: docker/setup-buildx-action@v3
+
+        # Exposes GitHub Actions cache to Docker Compose
+        - name: Cache Docker layers
+          uses: actions/cache@v4
+          with:
+            path: /tmp/.buildx-cache
+            key: ${{ runner.os }}-buildx-${{ github.sha }}
+            restore-keys: |
+              ${{ runner.os }}-buildx-
+
         - name: Start services
-          run: docker compose up -d --build
+          env:
+            COMPOSE_DOCKER_CLI_BUILD: 1
+            DOCKER_BUILDKIT: 1
+          run: |
+            docker compose build --build-arg BUILDKIT_INLINE_CACHE=1
+            docker compose up -d
 
         - name: Wait for API to start
-          run: sleep 30
+          run: sleep 10 # Reduced from 30 since cached containers boot much faster
 
         - name: Health check
           run: curl --fail http://localhost:8000/health
