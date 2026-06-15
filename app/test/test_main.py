@@ -5,6 +5,7 @@ from fastapi.testclient import TestClient
 
 from app.main import app
 from app.store import save_job, get_job
+from app.services.classifier import predict
 
 client = TestClient(app)
 
@@ -283,54 +284,69 @@ class TestStore:
         assert delete_job("nonexistent") is False
 
 
-# Classifier Unit Tests
+# Classifier Unit Testst
 
 
 class TestClassifier:
-    def test_predict_returns_dict(self):
-        from app.services.classifier import predict
 
+    @pytest.fixture(autouse=True)
+    def mock_model_pipeline(self):
+        """Automatically mock the get_model function for all tests in this class."""
+
+        # Create a mock pipeline object that mimics your real scikit-learn/joblib pipeline
+        class MockPipeline:
+            def predict(self, text):
+                # If the test text contains 'space', simulate a space prediction, otherwise atheism
+                if "space" in text[0].lower():
+                    return [0]
+                return [1]
+
+            def predict_proba(self, text):
+                # Return a dummy probability array [[prob_class_0, prob_class_1]]
+                if "space" in text[0].lower():
+                    return [[0.95, 0.05]]
+                return [[0.05, 0.95]]
+
+        # Define the dummy dictionary structure that get_model normally returns
+        mock_data = {
+            "pipeline": MockPipeline(),
+            "categories": ["sci.space", "alt.atheism"],
+        }
+
+        # Patch the get_model function inside the classifier service module
+        with patch("app.services.classifier.get_model", return_value=mock_data):
+            yield
+
+    def test_predict_returns_dict(self):
         result = predict("NASA launched a spacecraft")
         assert isinstance(result, dict)
 
     def test_predict_returns_category(self):
-        from app.services.classifier import predict
-
         result = predict("NASA launched a spacecraft")
         assert "category" in result
 
     def test_predict_returns_confidence(self):
-        from app.services.classifier import predict
-
         result = predict("NASA launched a spacecraft")
         assert "confidence" in result
 
     def test_predict_category_is_string(self):
-        from app.services.classifier import predict
-
         result = predict("NASA launched a spacecraft")
         assert isinstance(result["category"], str)
 
     def test_predict_confidence_is_float(self):
-        from app.services.classifier import predict
-
         result = predict("NASA launched a spacecraft")
         assert isinstance(result["confidence"], float)
 
     def test_predict_confidence_between_0_and_1(self):
-        from app.services.classifier import predict
-
         result = predict("NASA launched a spacecraft")
         assert 0.0 <= result["confidence"] <= 1.0
 
     def test_predict_correct_category_for_space_text(self):
-        from app.services.classifier import predict
-
         result = predict("NASA launched a new spacecraft into orbit")
         assert result["category"] == "sci.space"
+        assert result["confidence"] == 0.9500
 
     def test_predict_correct_category_for_atheism_text(self):
-        from app.services.classifier import predict
-
         result = predict("Atheism is a belief system that rejects religion")
         assert result["category"] == "alt.atheism"
+        assert result["confidence"] == 0.9500
