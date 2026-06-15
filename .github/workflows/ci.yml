@@ -38,7 +38,7 @@ jobs:
       - name: Run test suite with coverage
         run: pytest app/test/ -v --cov=app --cov-report=term-missing --tb=short
 
-  # Job 2: Build & Verify Docker Image (With Buildx Layer Caching)
+# Job 2: Build & Verify Docker Image (With Buildx Layer Caching)
   docker-build:
     runs-on: ubuntu-latest
     needs: test
@@ -57,9 +57,14 @@ jobs:
             restore-keys: |
               ${{ runner.os }}-buildx-
 
-        # NEW STEP: Create a dummy model so Docker COPY and RUN validations pass
+        - name: Set up Python
+          uses: actions/setup-python@v5
+          with:
+            python-version: "3.12"
+
         - name: Generate Dummy Model for Docker
           run: |
+            pip install joblib
             python -c "import joblib; joblib.dump({'pipeline': 'fake', 'categories': ['A']}, 'model.joblib')"
 
         - name: Start services
